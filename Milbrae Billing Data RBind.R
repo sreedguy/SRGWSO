@@ -1,0 +1,6 @@
+setwd("G:\\Team Drives\\WSO USA - Projects\\690 - BAWSCA\\Millbrae\\Millbrae Data Transfer CY2017")
+cyc1 <- read.csv("Meter History Cycle 1.csv")
+cyc2 <- read.csv("Meter History Cycle 2.csv")
+cycles <- rbind(cyc1,cyc2)
+library(xlsx)
+write.csv(cycles,file = "BillingDataWSO.csv")
