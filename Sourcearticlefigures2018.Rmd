@@ -1,0 +1,332 @@
+---
+title: "Water Loss TAP Audit Analysis, Source Article 2018"
+output: html_notebook
+---
+Water audits evaluate real and apparent water losses occurring in a potable distribution system. For more information about the water audit and the distinct forms of water loss, please refer to American Water Works Association manual M36: Water Audits and Loss Control Programs.
+
+This water audit dataset is composed of water audits submitted to the Department of Water Resources as required by Senate Bill 555 and Senate BIll 1420. This notebook describes analyses on about 1700 audits submitted to the state of California during 2016 and 2017. Five seperate sets of water audits, submitted at different times are described by these data:
+
+* **2015 UWMP:** SB 1420 made audit submission mandatory with 2015 Urban Water Management Plans. These audits were self reported, and therefore were not validated.
+* **TAP Wave 2 Pre-Validation:** ...
+* **TAP Wave 2 Post-Validation:** ...
+* **TAP Wave 4 Pre-Validation:** ...
+* **TAP Wave 4 Post-Validation:** ...
+
+
+```{r, include=FALSE}
+#Kris's extra comment.
+library(dplyr)
+library(reshape2)
+library(readxl)
+library(tidyr)
+library(ggplot2)
+library(RColorBrewer)
+library(scales)
+library(lubridate)
+library(shiny)
+#library(gdata)
+library(grid)
+library(ggmap)
+library(stringr)
+options(scipen = 9999)
+theme_set(theme_minimal())
+copy <- function(x, sep="\t", row.names=FALSE, col.names=TRUE){
+  con <- pipe("xclip -selection clipboard -i", open="w")
+  write.table(x, con, sep=sep, row.names=row.names, col.names=col.names)
+  close(con)
+}#Used to very quickly copy dataframes to paste into excel.
+na.scan <- function(x) {
+  sum(is.na(x))
+}
+blank.scan <- function(x) {
+  sum(x == "")
+}
+```
+
+
+```{r, echo = F}
+fig_title_size <- 10
+fig_xylab_size <- 8
+fig_textlab_size <- 8
+fig_axes_size <- 9
+fig_legendtitle_size <- 9
+fig_legenditem_size <- 8
+```
+
+
+```{r, include=FALSE}
+setwd("G:\\Team Drives\\WSO USA - Projects\\680 - Validations\\Analysis\\Final Audit Collection\\Compiled Audit Data")
+aud_2015UWMP <- read_xlsx("2015UWMP_Compiler.xlsm", sheet = 2)
+aud_W2V1 <- read_xlsx("W2V1_Compiler.xlsm", sheet = 2)
+aud_W2V2 <- read_xlsx("W2V2_Compiler.xlsm", sheet = 2)
+aud_W4V1 <- read_xlsx("W4V1_Compiler.xlsm", sheet = 2)
+aud_W4V2 <- read_xlsx("W4V2_Compiler.xlsm", sheet = 2)
+aud_2018 <- read_xlsx("2018_Compiler.xlsm", sheet = 2)
+aud <- rbind(aud_2015UWMP, aud_W2V1, aud_W2V2, aud_W4V1, aud_W4V2, aud_2018)
+rm(aud_2015UWMP, aud_W2V1, aud_W2V2, aud_W4V1, aud_W4V2, aud_2018)
+colnames(aud) <- c("chart", "repName", "city", "state", "country", "contactName", "contactEmail", "phone", "reportYear", "cyfy", "reportingPeriod", "auditPrepDate", "units", "pwsID", "vfos", "vfosmea", "wi", "wimea", "we", "wemea", "ws", "bmac", "buac", "umac", "uuac", "uuacDefault", "ac", "wl", "uac", "uacDefault", "cmi", "sdhe", "sdheDefault", "al", "rl", "wlTwo", "nrw", "mains", "sc", "scDens", "meterLocation", "scLen", "psi", "totCost", "cruc", "crucUnits", "vpc", "uarl", "alCost", "rlCost", "rlValue", "nrwByws", "nrwBycost", "alpcd", "rlpcd", "rlpmd", "rlpcdpsi", "carl", "ili", "dvs", "p1", "p2", "p3", "vfosdvs", "vfosmeadvs", "widvs", "wimeadvs", "wedvs", "wemeadvs", "bmacdvs", "buacdvs", "umacdvs", "uuacdvs", "uacdvs", "cmidvs", "sdhedvs", "mainsdvs", "scdvs", "scLendvs", "psidvs", "totCostdvs", "crucdvs", "vpcdvs", "comments", "file", "auditVersion")
+numericFields <- c("vfos", "vfosmea", "wi", "wimea", "we", "wemea", "ws", "bmac", "buac", "umac", "uuac", "ac", "wl", "uac", "cmi", "sdhe", "sdheDefault", "al", "rl", "wlTwo", "nrw", "mains", "sc", "scDens", "scLen", "psi", "totCost", "cruc", "vpc", "uarl", "alCost", "rlCost", "nrwByws", "nrwBycost", "alpcd", "rlpcd", "rlpmd", "rlpcdpsi", "carl", "ili", "dvs", "vfosdvs", "vfosmeadvs", "widvs", "wimeadvs", "wedvs", "wemeadvs", "bmacdvs", "buacdvs", "umacdvs", "uuacdvs", "uacdvs", "cmidvs", "sdhedvs", "mainsdvs", "scdvs", "scLendvs", "psidvs", "totCostdvs", "crucdvs", "vpcdvs")
+aud[numericFields] <- lapply(aud[numericFields], as.numeric)
+aud$fullName <- sub(" \\(.*", "", aud$file)
+aud$name <- sub(" =.*| \\(.*", "", aud$file)
+aud$version <- sub(".*\\(", "", aud$file)
+aud$version <- sub("\\).*", "", aud$version)
+#append year on to W2v1 &v2, w4V1 &V2
+aud$version2 <- ifelse(grepl("w2v1", aud$version), "2016 w2v1", 
+                       ifelse(grepl("w2v2", aud$version), "2016 w2v2", 
+                              ifelse(grepl("w4v1", aud$version), "2017 w4v1", 
+                                     ifelse(grepl("w4v2", aud$version), "2017 w4v2", aud$version))))
+
+aud$subsystem <- sub(".*= ", "", aud$file)
+aud$subsystem <- sub(" \\(.*", "", aud$subsystem)
+aud$subsystem[!grepl("=", aud$file)] <- ""
+aud$validated <- grepl("v2", aud$version)
+conversionFields <- c("vfos", "vfosmea", "wi", "wimea", "we", "wemea", "ws", "bmac", "buac", "umac", "uuac", "ac", "wl", "uac", "cmi", "sdhe", "al", "rl", "wlTwo", "nrw", "uarl", "carl")
+#conditional mutate is AWESOME:
+aud <- aud %>% 
+  mutate_at(conversionFields,
+            funs(ifelse(units == "Acre-feet", ., .*(1000000/325851))))
+
+aud <- aud %>% 
+  mutate_at(c("vpc"),
+            funs(ifelse(units == "Acre-feet", ., ./(1000000/325851))))
+
+# How to handle the lone audit that did not report units???? it is NOT converted and likely AF, so gracefull in this application
+aud <- aud %>% 
+  mutate_at(c("cruc"),
+            funs(ifelse(crucUnits == "$/100 cubic feet (ccf)", ., ./(1000/748.052))))
+
+aud <- aud %>% 
+  mutate(
+    bmacClean = replace(bmac, is.na(bmac), 0),
+    umacClean = replace(umac, is.na(umac), 0),
+    mac = bmacClean + umacClean,
+    cmiPercent = round(1 - mac/(mac+cmi), 4),
+    wlpcd = ifelse(scDens > 32, wl*325851/sc/365, NA),
+    vrlmain = rlCost/mains
+  )
+
+systemData <- read_xlsx("System Data.xlsx")
+#systemData$address <- paste(systemData$city, ", CA")
+#systemData$latlon <- geocode(systemData$address, output = c("latlon"), source = c("google"))
+aud <- left_join(aud, systemData, by = c("fullName"))
+```
+
+
+```{r}
+aud$wsoReportingPeriod <- recode(aud$reportingPeriod,
+  "1/1/2015 - 12/31/2015" = "1/2015 - 12/2015",
+  "1/1/2015 - 12/1/2015" = "1/2015 - 12/2015",
+  "7/1/2014 - 6/30/2015" = "7/2014 - 6/2015",
+  "7/1/2014 - 6/1/2015" = "7/2014 - 6/2015",
+  "1/1/ - 12/31/" = "Unknown",
+  "1/1/2014 - 12/31/2014" = "1/2014 - 12/2014",
+  "1/1/2013 - 12/1/2013" = "1/2013 - 12/2013",
+  "1/1/FY15 - 12/31/FY15" = "1/2015 - 12/2015",
+  "7/1/2013 - 6/30/2014" = "Unknown",
+  "7/1/2013 - 6/1/2014" = "7/2013 - 6/2014",
+  "7/1/2014 - 6/30/2014" = "7/2014 - 6/2015",
+  "10/1/2014 - 9/1/2015" = "10/2014 - 9/2015",
+  "6/1/2014 - 6/1/2015" = "7/2014 - 6/2015",
+  "7/15/2014 - 6/1/2015" = "7/2014 - 6/2015",
+  "1/1/FY 2014/15 - 12/31/FY 2014/15" = "Unknown",
+  "1/1/2014 - 12/1/2014" = "1/2014 - 12/2014",
+  "1/1/2016 - 12/31/2016" = "1/2016 - 12/2016",
+  "1/1/2015 - 1/1/2016" = "1/2015 - 12/2015",
+  "1/1/2015 - 12/30/2015" = "1/2015 - 12/2015",
+  "7/1/2014 - 7/1/2015" = "7/2014 - 6/2015",
+  "6/1/2013 - 7/1/2014" = "7/2013 - 6/2014",
+  "1/1/FY 2015 - 12/31/FY 2015" = "1/2015 - 12/2015",
+  "6/1/2014 - 7/1/2015" = "7/2014 - 6/2015",
+  "1/1/2015 - 12/15/2015" = "1/2015 - 12/2015",
+  "1/1/2013 - 12/31/2013" = "1/2013 - 12/2013",
+  "7/1/2012 - 6/1/2013" = "7/2012 - 6/2013",
+  "7/1/2015 - 6/1/2016" = "7/2015 - 6/2016",
+  "7/1/2012 - 6/30/2013" = "7/2012 - 6/2013",
+  "7/1/2015 - 6/30/2016" = "7/2015 - 6/2016",
+  "1/1/2008 - 12/31/2008" = "1/2008 - 12/2008",
+  "7/1/2015 - 6/1/2015" = "7/2015 - 6/2016",
+  "10/1/2015 - 9/1/2016" = "10/2015 - 9/2016",
+  "1/1/2015/2016 - 12/31/2015/2016" = "Unknown",
+  "5/1/2015 - 6/1/2016" = "5/2015 - 6/2016",
+  "7/1/2015 - 7/1/2016" = "7/2015 - 6/2016",
+  "-" = "Unknown",
+  "7/16/2016 - 6/18/2017" = "7/2016 - 6/2017",
+  "7/1/2016 - 6/1/2017" = "7/2016 - 6/2017",
+  "7/1/2016 - 6/30/2017" = "7/2016 - 6/2017",
+  "1/1/FY17 - 12/31/FY17" = "1/2016 - 12/2016",
+  "1/1/CY 2016 - 12/31/CY 2016" = "1/2016 - 12/2016",
+  "6/1/2016 - 6/1/2017" = "7/2016 - 6/2017",
+  "1/1/FY 16-17 - 12/31/FY 16-17" = "1/2016 - 12/2016",
+  "7/1/2015 - 6/1/2017" = "Unknown",
+  "7/1/2016 - 7/1/2017" = "7/2016 - 6/2017",
+  "7/1/2017 - 6/1/2018" = "7/2017 - 6/2018",
+  "6/1/2017 - 6/1/2018" = "7/2017 - 6/2018",
+  "1/1/2017 - 12/31/2017" = "1/2017 - 12/2017")
+
+```
+
+```{r, fig.height = 5, fig.width = 8.5}
+aud$version <- gsub('\\s+', '', aud$version)
+aud$version <- gsub('[0-9]{4}', '', aud$version)
+
+```
+
+
+
+```{r, include=FALSE}
+#filters
+#Wholesaler filters
+excluded <- aud[!is.na(aud$exclusions),]
+aud <- aud[is.na(aud$exclusions), ]
+
+#Usage filter
+aud$wsFilter <- F
+aud$wsFilter <- aud$ws == 0 | aud$ws == "" | is.na(aud$ws)
+
+aud$acFilter <- F
+aud$acFilter <- aud$ac == 0 | aud$ac == "" | is.na(aud$ac)
+
+aud$scFilter <- F
+aud$scFilter <- aud$sc == 0 | aud$sc == "" | is.na(aud$sc)
+
+aud$psiFilter <- F
+aud$psiFilter <- aud$psi == 0 | aud$psi == "" | is.na(aud$psi)
+
+aud$alFilter <- F
+aud$alFilter <- aud$al == 0 | aud$al == "" | is.na(aud$al)
+
+aud$mainsFilter <- F
+aud$mainsFilter[aud$mains == 0 | aud$mains == "" | is.na(aud$mains)] <- T
+
+usageFilters <- c("wsFilter", "acFilter", "scFilter", "psiFilter", "alFilter")
+aud$usageFilter <- F
+aud$usageFilter <- apply(aud[, usageFilters], 1, any)
+
+# KPI filters
+aud$iliFilter <- F
+iliApplies <- (aud$sc + 32*aud$mains) > 3000 & aud$psi > 35
+aud$iliFilter[(aud$ili < 1.0 | aud$ili > 20 | is.na(aud$ili)) & iliApplies] <- T
+
+aud$nrwFilter <- F
+aud$nrwFilter[aud$nrwBycost > 1] <- T
+
+aud$rlFilter <- F
+aud$rlFilter[aud$rl <= 0 | is.na(aud$rl)] <- T
+
+aud$vpcFilter <- F
+vpcUpper <- median(aud$vpc, na.rm = T)*100
+vpcLower <- median(aud$vpc, na.rm = T)*.01
+aud$vpcFilter[aud$vpc > vpcUpper | aud$vpc < vpcLower] <- T
+
+aud$crucFilter <- F
+crucUpper <- median(aud$cruc, na.rm = T)*100
+crucLower <- median(aud$cruc, na.rm = T)*.01
+aud$crucFilter[aud$cruc > crucUpper | aud$cruc < crucLower] <- T
+kpiFilters <- c("iliFilter", "nrwFilter", "rlFilter", "vpcFilter", "crucFilter")
+aud$kpiFilter <- F
+aud$kpiFilter <- apply(aud[ , kpiFilters], 1, any)
+
+# Overall filter
+filters <- c("usageFilter", "kpiFilter")
+aud$filter <- F
+aud$filter <- apply(aud[, filters], 1, any)
+```
+
+```{r}
+aud2018 <- aud %>% 
+  filter(version == "Submission")
+  
+```
+
+```{r, include = FALSE}
+filterLabels <- c(iliFilter = "Leakage Index", 
+  nrwFilter = "Non-Revenue Water", 
+  rlFilter = "Real Loss",
+  vpcFilter = "Production Cost",
+  crucFilter = "Retail Unit Cost",
+  usageFilter = "Incomplete Audit",
+  filter = "All Filters")
+
+versionLabels <- c("2015 UWMP", "Wave 2 Pre-Validation", "Wave 2 Post-Validation", "Wave 4 Pre-Validation", "Wave 4 Post-Validation", "2018 Submission")
+#Lists of Filter Variables
+usageFilters <- c("wsFilter", "acFilter", "scFilter", "psiFilter", "alFilter")
+kpiFilters <- c("iliFilter", "nrwFilter", "rlFilter", "vpcFilter", "crucFilter")
+
+#Lists of DVS and KPI Variables
+kpiList <- c("al", "rl", "nrw", "alCost", "rlCost", "nrwByws", "nrwBycost", "alpcd", "rlpcd", "rlpmd", "rlpcdpsi", "ili")
+dvsList <- c("vfosdvs", "vfosmeadvs", "widvs", "wimeadvs", "wedvs", "wemeadvs", "bmacdvs", "buacdvs", "umacdvs", "uuacdvs", "uacdvs", "cmidvs", "sdhedvs", "mainsdvs", "scdvs", "scLendvs", "psidvs", "totCostdvs", "crucdvs", "vpcdvs", "dvs")
+
+```
+##excluded audits -----
+Here is a list of all the excluded audit files and the reason for their exclusion:
+```{r}
+excluded %>% 
+  select(fullName, file, exclusions)
+```
+
+
+
+#Submission Counts
+The table below shows the count of submissions for each submission round. This is actually the number of records I have for each round of submission after removing wholesalers and non-RUWS.
+```{r, echo = F}
+
+aud %>% 
+  group_by(version2) %>% 
+  summarize(count = n())
+```
+
+
+#Water loss histogram
+```{r, echo = F, fig.width = 6, fig.height = 4}
+aud %>% 
+  filter(version2 == '2018 Submission') %>% 
+  ggplot() +
+  geom_histogram(aes(wlpcd), fill = "steelblue", binwidth = 5, center=2.5) +
+  ylab("Count of Audits") +
+  xlab("Water Losses per Connection per Day") +
+  scale_x_continuous(breaks = seq(-50,250,10)) +
+  #ggtitle("Real Losses per Conn. per Day") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("wlpcdHistogram.svg",  width = 9, height = 6, path = file.path("G:\\Team Drives\\WSO USA - Reference\\WSO Publications\\Source Article, Winter 2018\\Source Article Figures"))
+```
+
+
+```{r, fig.height = 7, fig.width = 7}
+
+aud %>% 
+  filter(version %in% c("w4v2", "Submission")) %>% 
+  group_by(fullName) %>% 
+  dcast(fullName ~ version, value.var = c("wlpcd")) %>%
+  filter(!is.na(w4v2) & !is.na(Submission)) %>%
+  mutate(range = abs(abs(Submission)-abs(w4v2)),
+         changer = (range >= 10)) %>%
+ggplot() +
+  geom_point(aes(x = w4v2, y = Submission, color = changer)) +
+  geom_abline(aes(intercept = 0, slope = 1)) +
+  #ggtitle("Water Loss per Connection per Day in 2017 vs. 2018") +
+  xlab("2017 Results\n(water losses per connection per day)") +
+  ylab("2018 Results\n(water losses per connection per day)") +
+  xlim(0,225) +
+  ylim(0,225) +
+  coord_fixed(1)+
+  scale_color_manual("Change in Water Losses\nper Connection per Day", labels = c("< 10 gal change", ">= 10 gal change"), values = c("steelblue", "#cc5500"))
+ggsave("wlpcdchange.svg",  width = 9, height = 6, path = file.path("G:\\Team Drives\\WSO USA - Reference\\WSO Publications\\Source Article, Winter 2018\\Source Article Figures"))
+```
+
+#wlpcd box and whisker plot 2018
+```{r}
+aud %>% 
+  filter(version2 %in% c("2017 w4v2", "2018 Submission")) %>%
+  ggplot(aes(x=version2, y=wlpcd)) +
+  geom_boxplot()+
+  scale_x_discrete(labels = c("2017 Water Losses", "2018 Water Losses")) +
+  xlab("") +
+  ylab("\nWater Losses per Connection per Day") +
+  coord_flip()
+
+ggsave("wlpcdboxplot2.svg",  width = 9, height = 6, path = file.path("G:\\Team Drives\\WSO USA - Reference\\WSO Publications\\Source Article, Winter 2018\\Source Article Figures"))
+```
+
+
